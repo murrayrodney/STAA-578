@@ -17,6 +17,7 @@ pyarrow = "^15.0.2"
 tensorflow = "^2.16.1"
 keras = "^3.2.1"
 scikit-learn = "^1.4.2"
+mlflow = "^2.12.1"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.19.4"
