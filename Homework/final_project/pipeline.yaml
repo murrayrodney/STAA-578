@@ -1,0 +1,12 @@
+meta:
+  extract_upstream: false
+
+tasks:
+  - source: process_data.py
+    params:
+      resources_: 
+        bh_locations: '{{data}}/bh_locations.csv'
+        well_injection: '{{data}}/well_injection.csv'
+        well_production: '{{data}}/well_production.csv'
+    product: 
+      nb: '{{artifacts}}/process_data.ipynb'

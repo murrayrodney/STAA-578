@@ -161,3 +161,8 @@ cython_debug/
 
 *.pdf
 .DS_Store
+
+mlruns/
+*doc
+*.mdb
+*artifacts/
