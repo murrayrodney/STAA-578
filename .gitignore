@@ -166,3 +166,4 @@ mlruns/
 *doc
 *.mdb
 *artifacts/
+data/

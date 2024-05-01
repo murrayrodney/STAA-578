@@ -10,3 +10,4 @@ tasks:
         well_production: '{{data}}/well_production.csv'
     product: 
       nb: '{{artifacts}}/process_data.ipynb'
+      input_data: '{{data}}/interim/input_data.parquet'
