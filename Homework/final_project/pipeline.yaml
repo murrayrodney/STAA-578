@@ -11,3 +11,29 @@ tasks:
     product: 
       nb: '{{artifacts}}/process_data.ipynb'
       input_data: '{{data}}/interim/input_data.parquet'
+
+  - source: train_test_split.py
+    upstream:
+      - process_data
+    params:
+      train_cutoff_date: '2015-01-01'
+      val_cutoff_date: '2019-01-01'
+      x_cols: '{{x_cols}}'
+      y_cols: '{{y_cols}}'
+    product: 
+      nb: '{{artifacts}}/train_test_split.ipynb'
+      train_df: '{{data}}/interim/train_df.parquet'
+      test_df: '{{data}}/interim/test_df.parquet'
+      val_df: '{{data}}/interim/val_df.parquet'
+      train_dataset: '{{data}}/interim/train_dataset.tf'
+      test_dataset: '{{data}}/interim/test_dataset.tf'
+      val_dataset: '{{data}}/interim/val_dataset.tf'
+
+  - source: model.py
+    params:
+      x_cols: '{{x_cols}}'
+      y_cols: '{{y_cols}}'
+    upstream: 
+      - train_test_split
+    product: 
+      nb: '{{artifacts}}/model.ipynb'

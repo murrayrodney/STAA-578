@@ -171,6 +171,7 @@ aggs = {
 prod_summary = prod_inj.groupby(["well_name_prod", "reportdate"], as_index=False).agg(
     aggs
 )
+prod_summary["well_status"] = (prod_summary["liquid_rate"] > 0).astype(int)
 prod_summary.head()
 
 # %%
