@@ -167,3 +167,6 @@ mlruns/
 *.mdb
 *artifacts/
 data/
+
+*.keras
+*.tf/
