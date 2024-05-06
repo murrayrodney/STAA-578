@@ -4,15 +4,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from keras import layers, models, optimizers, callbacks
-from keras.utils import timeseries_dataset_from_array
-from tensorflow.data import Dataset
 import mlflow
 import mlflow.keras
 import matplotlib
+from keras.utils import to_categorical
+import itertools
 import tensorflow as tf
-from copy import deepcopy
-from tqdm import tqdm
-import joblib
+from sklearn.metrics import mean_absolute_error
 
 matplotlib.style.use("ggplot")
 
@@ -43,21 +41,37 @@ else:
 
 
 # %%
-def calc_baseline(df):
+def calc_baseline(df, y_col):
     df_eval = df.copy()
-    df_eval["shifted_oil"] = df_eval.groupby(level=0)["oil_rate"].shift(1)
-    df_eval.dropna(subset=["shifted_oil"], inplace=True)
+    df_eval["shifted"] = df_eval.groupby(level=0)[y_col].shift(1)
+    df_eval.dropna(subset=["shifted"], inplace=True)
 
-    mae = np.abs(df_eval["oil_rate"] - df_eval["shifted_oil"]).mean()
+    mae = np.abs(df_eval[y_col] - df_eval["shifted"]).mean()
     return mae
 
 
+def get_numpy_arrays(dataset):
+    dataset_inputs = []
+    dataset_outputs = []
+    for inputs, outputs in dataset.as_numpy_iterator():
+        dataset_inputs.append(inputs)
+        dataset_outputs.append(outputs)
+
+    dataset_inputs = np.concatenate(dataset_inputs)
+    dataset_outputs = np.concatenate(dataset_outputs)
+    return dataset_inputs, dataset_outputs
+
+
+train_inputs, train_outputs = get_numpy_arrays(train_dataset)
+val_inputs, val_outputs = get_numpy_arrays(val_dataset)
+test_inputs, test_outputs = get_numpy_arrays(test_dataset)
+
 with mlflow.start_run(experiment_id=experiment_id) as run:
-    metrics = {
-        "train_mae": calc_baseline(train),
-        "val_mae": calc_baseline(val),
-        "test_mae": calc_baseline(test),
-    }
+    dfs = [train, val, test]
+    names = ["train", "val", "test"]
+    metrics = {}
+    for (i, df), col in itertools.product(enumerate(dfs), y_cols):
+        metrics[f"{names[i]}_{col}_mae"] = calc_baseline(df, col)
     mlflow.log_param("model_type", "baseline")
     mlflow.log_metrics(metrics)
 
@@ -65,21 +79,26 @@ with mlflow.start_run(experiment_id=experiment_id) as run:
 # # Train an LSTM model
 
 # %%
-n_out = 16
+train_well_cat = to_categorical(pd.Categorical(train.index.get_level_values(0)).codes)
+val_well_cat = to_categorical(pd.Categorical(val.index.get_level_values(0)).codes)
 
-inputs = layers.Input(shape=(12, len(x_cols)))
-x = layers.LSTM(n_out)(inputs)
-outputs = layers.Dense(1)(x)
+# %%
+n_out = 128
+
+inputs = layers.Input(shape=(12, len(x_cols + y_cols)))
+norm = layers.Normalization()(inputs)
+x = layers.LSTM(n_out, return_sequences=True)(norm)
+x = layers.Dropout(0.2)(x)
+x = layers.LSTM(n_out, return_sequences=False)(x)
+x = layers.Dropout(0.2)(x)
+
+outputs = layers.Dense(len(y_cols), activation="relu")(x)
 model = models.Model(inputs, outputs)
 
-optimizer = optimizers.Adam()
+optimizer = optimizers.Adam(learning_rate=0.01)
 model.compile(optimizer=optimizer, loss="mse", metrics=["mae"])
 
 model.summary()
-
-# %%
-train_pred = model.predict(train_dataset)
-train_pred.shape
 
 # %%
 fit_callbacks = [
@@ -90,7 +109,40 @@ with mlflow.start_run(experiment_id=experiment_id) as run:
     mlflow.keras.autolog()
     mlflow.log_params({"model_type": "lstm", "n_out": n_out})
     model.fit(
-        train_dataset, validation_data=val_dataset, epochs=3, callbacks=fit_callbacks
+        train_dataset,
+        validation_data=val_dataset,
+        epochs=500,
+        # epochs=3,
+        callbacks=fit_callbacks,
+        batch_size=2048,
     )
+    train_pred = model.predict(train_dataset, verbose=0)
+    val_pred = model.predict(val_dataset, verbose=0)
+
+    # Get metrics for the predictions
+    dataset_ouputs = [train_outputs, val_outputs]
+    names = ["train", "val"]
+    preds = [train_pred, val_pred]
+    metrics = {}
+    for i, col in enumerate(y_cols):
+        for name, pred, outputs in zip(names, preds, dataset_ouputs):
+            metrics[f"{name}_{col}_mae"] = mean_absolute_error(
+                outputs[:, i], pred[:, i]
+            )
+
+    # Log the metrics to mlflow
+    mlflow.log_metrics(metrics)
+
+# %%
+test_pred = model.predict(test_dataset, verbose=0)
+
+dataset_ouputs = [train_outputs, val_outputs, test_outputs]
+names = ["train", "val", "test"]
+preds = [train_pred, val_pred, test_pred]
+metrics = {}
+for i, col in enumerate(y_cols):
+    for name, pred, outputs in zip(names, preds, dataset_ouputs):
+        metrics[f"{name}_{col}_mae"] = mean_absolute_error(outputs[:, i], pred[:, i])
+metrics
 
 # %%
